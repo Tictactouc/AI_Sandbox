@@ -28,8 +28,6 @@ test_data = datasets.KMNIST(
     transform=ToTensor(),
 )
 
-def test():
-
 
 
 class NeuralNetwork(nn.Module):
