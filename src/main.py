@@ -1,41 +1,21 @@
 import os
+import pandas
 import torch
+from PIL import *
+from PIL import Image
 from torch import nn
 from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
-from torchvision.transforms import ToTensor
-from PIL import Image
-import matplotlib.pyplot as plt
-import numpy as np
+from torchvision import datasets
+from torchvision.transforms import ToTensor, transforms
 
-
-def pre_image(image_path,model):
-   img = Image.open(image_path)
-   mean = [0.485, 0.456, 0.406]
-   std = [0.229, 0.224, 0.225]
-   transform_norm = transforms.Compose([transforms.ToTensor(),
-   transforms.Resize((224,224)),transforms.Normalize(mean, std)])
-   # get normalized image
-   img_normalized = transform_norm(img).float()
-   img_normalized = img_normalized.unsqueeze_(0)
-   # input = Variable(image_tensor)
-   img_normalized = img_normalized.to(device)
-   # print(img_normalized.shape)
-   with torch.no_grad():
-      model.eval()
-      output =model(img_normalized)
-      print(output)
-      index = output.data.cpu().numpy().argmax()
-      classes = train_ds.classes
-      class_name = classes[index]
-      return class_name
-
-device = "cpu"
+device = (
+    "cuda"
+)
 
 # Download training data from open datasets.
 training_data = datasets.KMNIST(
     root="data",
-    train="true",
+    train=True,
     download=True,
     transform=ToTensor(),
 )
@@ -48,16 +28,8 @@ test_data = datasets.KMNIST(
     transform=ToTensor(),
 )
 
-batch_size = 64
+def test():
 
-# Create data loaders.
-train_dataloader = DataLoader(training_data, batch_size=batch_size)
-test_dataloader = DataLoader(test_data, batch_size=batch_size)
-
-for X, y in test_dataloader:
-    print(f"Shape of X [N, C, H, W]: {X.shape}")
-    print(f"Shape of y: {y.shape} {y.dtype}")
-    break
 
 
 class NeuralNetwork(nn.Module):
@@ -65,7 +37,7 @@ class NeuralNetwork(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         self.linear_relu_stack = nn.Sequential(
-            nn.Linear(28*28, 512),
+            nn.Linear(28 * 28, 512),
             nn.ReLU(),
             nn.Linear(512, 512),
             nn.ReLU(),
@@ -77,11 +49,6 @@ class NeuralNetwork(nn.Module):
         logits = self.linear_relu_stack(x)
         return logits
 
-model = NeuralNetwork().to(device)
-print(model)
-
-loss_fn = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
 
 def train(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
@@ -111,26 +78,80 @@ def test(dataloader, model, loss_fn):
     with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
+
             pred = model(X)
+
             test_loss += loss_fn(pred, y).item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
     test_loss /= num_batches
     correct /= size
-    print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-
-epochs = 20
-for t in range(epochs):
-    print(f"Epoch {t+1}\n-------------------------------")
-    train(train_dataloader, model, loss_fn, optimizer)
-    test(test_dataloader, model, loss_fn)
-print("Done!")
+    print(f"Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
 
-pre_image("C:\\Users\\toor\\Desktop\\IAtest.bmp", model)
+def show_probability(pred):
+    map = pandas.read_csv(r"kmnist_classmap.csv")
+    tensor = pred.flatten()
+    tensor -= tensor.min()
+    tensor /= tensor.max()
+    tensor /= tensor.sum()
+    tensor *= 100
+    list = tensor.tolist()
+    list.sort(reverse=True)
+    for i in range(0, 9):
+        print(map.values[i], f" : {list[i]:.1f}%")
 
 
+def main():
+    batch_size = 64
+
+    # Create data loaders.
+    train_dataloader = DataLoader(training_data, batch_size=batch_size)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+
+    for X, y in test_dataloader:
+        print(f"Shape of X [N, C, H, W]: {X.shape}")
+        print(f"Shape of y: {y.shape} {y.dtype}")
+        break
+
+    print(f"Using {device} device")
+
+    model = NeuralNetwork().to(device)
+    print(model)
+
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
+
+    retreviedState = {}
+    if not os.path.isfile("state_dict_model.pt"):
+
+        epochs = 100
+        for t in range(epochs):
+            print(f"Epoch {t + 1}\n-------------------------------")
+            train(train_dataloader, model, loss_fn, optimizer)
+            test(test_dataloader, model, loss_fn)
+
+        state = {
+            'epoch': epochs,
+            'state_dict': model.state_dict(),
+            'optimizer': optimizer.state_dict()
+        }
+
+        torch.save(state, "state_dict_model.pt")
+        print("training Done!")
+
+    else:
+        state = torch.load("state_dict_model.pt")
+        model.load_state_dict(state['state_dict'])
+
+    #load the image
+    im = Image.open("image_test.bmp")
+    tensor_im = ToTensor()(im)
+    cuda_tensor_im = tensor_im.cuda()
+    print(cuda_tensor_im)
+    pred = model.forward(cuda_tensor_im)
+    print(pred)
+    show_probability(pred)
 
 
-
-
-
+if __name__ == "__main__":
+    main()
